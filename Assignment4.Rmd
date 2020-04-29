@@ -1,7 +1,10 @@
 ---
 title: "Assignment 4 - Applying meta-analytic priors"
-author: "Riccardo Fusaroli"
-output: html_document
+author: "Study group 12"
+date: "29/04/2020"
+output:   
+  md_document:
+    variant: markdown_github
 ---
 
 ```{r setup, include=FALSE}
@@ -20,7 +23,7 @@ The questions you need to answer are: What are the consequences of using a meta-
 ```{r}
 #load data and packages
 
-pacman::p_load(tidyverse, brms, metafor)
+pacman::p_load(tidyverse, brms, metafor, bayesplot)
 
 meta <- read_tsv("Ass4_MetaAnalysisData.tsv")
 
@@ -128,8 +131,14 @@ meta_model_posterior <- brm(
   control = list(adapt_delta = .99)
   )
 
+
+
+mcmc_trace(meta_model_posterior, pars = c("b_Intercept", "sd_Population__Intercept"))
+
 #Posterior predictive check
 (meta_posterior <- pp_check(meta_model_posterior, nsamples = 100))
+
+
 
 #Predictive checks
 gridExtra::grid.arrange(meta_3rd_prior, meta_posterior)
@@ -180,6 +189,87 @@ full %>%
   ggplot(aes(Pitch_IQR_std))+
     geom_density()
 
+#saving plot of Pitch IQR distribution Language = dk
+dist_dk <- full %>% filter(Language == "dk") %>% 
+  ggplot(aes(Pitch_IQR_std))+
+    geom_density()+
+  ggtitle("Pitch IQR distribution Language = dk")
+
+#saving plot of Pitch IQR distribution Language = us
+dist_us <- full %>% filter(Language == "us") %>% 
+  ggplot(aes(Pitch_IQR_std))+
+    geom_density()+
+  ggtitle("Pitch IQR distribution Language = us")
+
+#saving distribution parameters of language
+Lang <- full %>% group_by(Language) %>% summarise(m = mean(Pitch_IQR_std),
+                                          std = sd(Pitch_IQR)) %>% 
+  mutate(Diagnosis = NA)
+
+#saving plot of Pitch IQR distribution Diagnosis = ASD
+dist_ASD <- full %>% filter(Diagnosis == "ASD") %>% 
+  ggplot(aes(Pitch_IQR_std))+
+    geom_density()+
+  ggtitle("Pitch IQR distribution Diagnosis = ASD")
+
+#saving plot of Pitch IQR distribution Diagnosis = TD
+dist_TD <- full %>% filter(Diagnosis == "TD") %>% 
+  ggplot(aes(Pitch_IQR_std))+
+    geom_density()+
+  ggtitle("Pitch IQR distribution Diagnosis = TD")
+
+#saving distribution parameters of Diagnosis
+Diag <- full %>% group_by(Diagnosis) %>% summarise(m = mean(Pitch_IQR_std),
+                                          std = sd(Pitch_IQR)) %>% 
+  mutate(Language = NA)
+
+
+#saving plot of Pitch IQR distribution Diagnosis = ASD Language = us
+dist_ASD_us <- full %>% filter(Diagnosis == "ASD" & Language == "us") %>% 
+  ggplot(aes(Pitch_IQR_std))+
+    geom_density()+
+  ggtitle("Pitch IQR distribution Diagnosis = ASD & Langauge = us")
+
+#saving plot of Pitch IQR distribution Diagnosis = ASD Language = us
+dist_ASD_dk <- full %>% filter(Diagnosis == "ASD" & Language == "dk") %>% 
+  ggplot(aes(Pitch_IQR_std))+
+    geom_density()+
+  ggtitle("Pitch IQR distribution Diagnosis = ASD & Langauge = dk")
+
+#saving plot of Pitch IQR distribution Diagnosis = TD Language = us
+dist_TD_us <- full %>% filter(Diagnosis == "TD" & Language == "us") %>% 
+  ggplot(aes(Pitch_IQR_std))+
+    geom_density()+
+  ggtitle("Pitch IQR distribution Diagnosis = TD & Langauge = us")
+
+#saving plot of Pitch IQR distribution Diagnosis = TD Language = dk
+dist_TD_dk <- full %>% filter(Diagnosis == "TD" & Language == "dk") %>% 
+  ggplot(aes(Pitch_IQR_std))+
+    geom_density()+
+  ggtitle("Pitch IQR distribution Diagnosis = TD & Langauge = dk")
+
+#Arranging plots of Pitch IQR distributions
+gridExtra::grid.arrange(dist_dk, dist_us, dist_ASD, dist_TD, dist_ASD_dk, dist_ASD_us, dist_TD_dk, dist_TD_us, nrow = 4)
+
+
+#saving distribution parameters of Diagnosis grouped on language
+interaction <- full %>% group_by(Diagnosis, Language) %>% summarise(m = mean(Pitch_IQR_std),
+                                          std = sd(Pitch_IQR))
+
+#saving table of all distribution parameters
+full_dist_estimates <- bind_rows(interaction, Lang, Diag)
+full_dist_estimates <-  full_dist_estimates %>%
+  mutate(m = m %>%
+           round(digits = 4),
+         std = std %>%
+           round(digits = 4))
+full_dist_estimates
+```
+
+```{r}
+
+### START MODELLING ###
+
 #get priors for model
 get_prior(formula = Pitch_IQR_std ~ 0 + Language + Diagnosis +  (1|ID),
           data = full)
@@ -203,6 +293,7 @@ sceptic_model_prior_0 <- brm(
 (sceptic_prior_0 <- pp_check(sceptic_model_prior_0, nsamples = 100))
 
 
+
 #creating model with sceptic priors
 sceptic_model_posterior_0 <- brm(
   data = full,
@@ -218,6 +309,8 @@ sceptic_model_posterior_0 <- brm(
   control = list(adapt_delta = 0.99)
 )
 
+mcmc_trace(sceptic_model_posterior_0, pars = c("b_Languagedk", "b_Languageus", "b_DiagnosisTD", "sd_ID__Intercept", "sigma"))
+
 #Posterior predictive check
 (sceptic_posterior_0 <- pp_check(sceptic_model_posterior_0, nsamples = 100))
 
@@ -230,16 +323,23 @@ sceptic_model_posterior_0
 #checking the hypothesis that there is an effect of diagnosis
 hypothesis(sceptic_model_posterior_0, "DiagnosisTD < 0")
 
+#plotting hypothesis
+plot(hypothesis(sceptic_model_posterior_0, "DiagnosisTD < 0"))[[1]]+
+  ggtitle("Effect of Diagnosis on Pitch IQR")
+
 #plotting effect
 conditional_effects(sceptic_model_posterior_0)
 
 
 
+
 ### Interaction model
 
+#get priors
 get_prior(formula = Pitch_IQR_std ~ 0 + Language + Language:Diagnosis +  (1|ID),
           data = full)
 
+#creating model with sceptic priors for prior predictive check
 sceptic_model_prior_1 <- brm(
   data = full,
   formula = Pitch_IQR_std ~ 0 + Language + Language:Diagnosis +  (1|ID),
@@ -255,10 +355,11 @@ sceptic_model_prior_1 <- brm(
   control = list(adapt_delta = 0.99)
 )
 
+#prior predictive check
 (sceptic_prior_1 <- pp_check(sceptic_model_prior_1, nsamples = 100))
 
 
-
+#creating model with sceptic priors
 sceptic_model_posterior_1 <- brm(
   data = full,
   formula = Pitch_IQR_std ~ 0 + Language + Language:Diagnosis +  (1|ID),
@@ -274,34 +375,73 @@ sceptic_model_posterior_1 <- brm(
   control = list(adapt_delta = 0.99)
 )
 
+
+mcmc_trace(sceptic_model_posterior_1, pars = c("b_Languagedk", "b_Languageus", "b_Languagedk:DiagnosisTD",  "b_Languageus:DiagnosisTD", "sd_ID__Intercept", "sigma"))
+
+
+#Posterior predictive check
 (sceptic_posterior_1 <- pp_check(sceptic_model_posterior_1, nsamples = 100))
+
+#Posterior predictive checks
 gridExtra::grid.arrange(sceptic_posterior_1, sceptic_prior_1)
 
+#model summary
 sceptic_model_posterior_1
 
 
-
-
+#testing hypotheses
 hypothesis(sceptic_model_posterior_1, 
-                c("Languageus:DiagnosisTD > Languagedk:DiagnosisTD",
-                  "Languageus:DiagnosisTD > 0",
-                  "Languagedk:DiagnosisTD < 0"))
+                c("Languageus:DiagnosisTD > Languagedk:DiagnosisTD", #the effect of diagnosis in the us is bigger than in dk
+                  "Languageus:DiagnosisTD > 0", #there is an effect of diagnosis in the us
+                  "Languagedk:DiagnosisTD < 0")) #there is an effect of diagnosis in dk
 
+#plotting hypotheses
+gridExtra::grid.arrange(
+  plot(hypothesis(sceptic_model_posterior_1, "Languageus:DiagnosisTD > Languagedk:DiagnosisTD"))[[1]]+
+       ggtitle("Difference in effects of diagnosis between languages"),
+  plot(hypothesis(sceptic_model_posterior_1, "Languageus:DiagnosisTD > 0"))[[1]]+
+       ggtitle("Effect of diagnosis in the US"),
+  plot(hypothesis(sceptic_model_posterior_1, "Languagedk:DiagnosisTD < 0"))[[1]]+
+       ggtitle("Effect of diagnosis in DK"), nrow = 3)
+
+
+#plotting effects
 conditional_effects(sceptic_model_posterior_1)
 
+
+
+#Plotting all sceptic model hypotheses
+gridExtra::grid.arrange(
+  plot(hypothesis(sceptic_model_posterior_0, "DiagnosisTD < 0"))[[1]]+ 
+      ggtitle("Effect of Diagnosis on Pitch IQR", "5.a"),
+  plot(hypothesis(sceptic_model_posterior_1, "Languageus:DiagnosisTD > Languagedk:DiagnosisTD"))[[1]]+
+       ggtitle("Difference in effects of diagnosis between languages", "5.b"),
+  plot(hypothesis(sceptic_model_posterior_1, "Languageus:DiagnosisTD > 0"))[[1]]+
+       ggtitle("Effect of diagnosis in the US", "5.c"),
+  plot(hypothesis(sceptic_model_posterior_1, "Languagedk:DiagnosisTD < 0"))[[1]]+
+       ggtitle("Effect of diagnosis in DK", "5.d"),
+  nrow = 4)
+
+
+
+#adding criteria for model comparison, both loo and waic
 sceptic_model_posterior_0 <- add_criterion(sceptic_model_posterior_0, criterion = "loo", reloo = T)
 sceptic_model_posterior_1 <- add_criterion(sceptic_model_posterior_1, criterion = "loo", reloo = T)
 sceptic_model_posterior_0 <- add_criterion(sceptic_model_posterior_0, criterion = "waic")
 sceptic_model_posterior_1 <- add_criterion(sceptic_model_posterior_1, criterion = "waic")
 
+#model comparison using waic as criterion
 print(loo_compare(sceptic_model_posterior_0, sceptic_model_posterior_1, criterion = "waic"),
       simplify = F)
 
+#model comparison using loo as criterion
 print(loo_compare(sceptic_model_posterior_0, sceptic_model_posterior_1, criterion = "loo"),
       simplify = F)
 
+#computing loo weights for models
 loo_model_weights(sceptic_model_posterior_0, sceptic_model_posterior_1)
 
+#computing waic weights for models
 model_weights(sceptic_model_posterior_0, sceptic_model_posterior_1, weights = "waic")
 
 
@@ -314,13 +454,11 @@ Step 4: Now re-run the model with the meta-analytic prior
 ```{r}
 
 
-full %>% filter(Language == "dk" & Diagnosis == "ASD") %>% 
-  ggplot(aes(Pitch_IQR_std))+
-    geom_density()
-
+#get priors
 get_prior(formula = Pitch_IQR_std ~ 0 + Language + Diagnosis +  (1|ID),
           data = full)
 
+#creating model with meta-analysis priors for prior predictive check
 meta_model_prior_0 <- brm(
   data = full,
   formula = Pitch_IQR_std ~ 0 + Language + Diagnosis +  (1|ID),
@@ -335,8 +473,10 @@ meta_model_prior_0 <- brm(
   control = list(adapt_delta = 0.99)
 )
 
+#prior predictive check
 (meta_prior_0 <- pp_check(meta_model_prior_0, nsamples = 100))
 
+#creating model with meta-analysis priors
 meta_model_posterior_0 <- brm(
   data = full,
   formula = Pitch_IQR_std ~ 0 + Language + Diagnosis +  (1|ID),
@@ -344,27 +484,44 @@ meta_model_posterior_0 <- brm(
   prior = c(
     prior(normal(0 , 0.5), class = b, coef = "Languageus"),
     prior(normal(0 , 0.5), class = b, coef = "Languagedk"),
-    prior(normal(0 , 0.1), class = b, coef = "DiagnosisTD"), 
+    prior(normal(-0.4238403, 0.08589883), class = b, coef = "DiagnosisTD"), 
     prior(normal(0 , 0.1), class = sd),
     prior(normal(0, 0.1), class = sigma)),
   sample_prior = T,
   control = list(adapt_delta = 0.99)
 )
 
+mcmc_trace(meta_model_posterior_0, pars = c("b_Languagedk", "b_Languageus", "b_DiagnosisTD", "sd_ID__Intercept", "sigma"))
+
+#Posterior predictive check
 (meta_posterior_0 <- pp_check(meta_model_posterior_0, nsamples = 100))
+
+#Predictive checks
 gridExtra::grid.arrange(meta_posterior_0, meta_prior_0)
 
+#model summary
 meta_model_posterior_0
 
+#testing hypothesis that there is an effect of Diagnosis
 hypothesis(meta_model_posterior_0, "DiagnosisTD < 0")
 
+#plotting hypothesis
+plot(hypothesis(meta_model_posterior_0, "DiagnosisTD < 0"))[[1]]+
+ggtitle("Effect of Diagnosis on Pitch IQR")
+
+
+#plotting effects
 conditional_effects(meta_model_posterior_0)
 
 
 
+### Interaction model ###
+
+#get priors
 get_prior(formula = Pitch_IQR_std ~ 0 + Language + Language:Diagnosis +  (1|ID),
           data = full)
 
+#creating model with meta-analysis priors for prior predictive check
 meta_model_prior_1 <- brm(
   data = full,
   formula = Pitch_IQR_std ~ 0 + Language + Language:Diagnosis +  (1|ID),
@@ -380,8 +537,10 @@ meta_model_prior_1 <- brm(
   control = list(adapt_delta = 0.99)
 )
 
+#prior predictive check
 (meta_prior_1 <- pp_check(meta_model_prior_1, nsamples = 100))
 
+#creating model with meta-analysis priors
 meta_model_posterior_1 <- brm(
   data = full,
   formula = Pitch_IQR_std ~ 0 + Language + Language:Diagnosis +  (1|ID),
@@ -397,22 +556,56 @@ meta_model_posterior_1 <- brm(
   control = list(adapt_delta = 0.99)
 )
 
+mcmc_trace(meta_model_posterior_1, pars = c("b_Languagedk", "b_Languageus", "b_Languagedk:DiagnosisTD",  "b_Languageus:DiagnosisTD", "sd_ID__Intercept", "sigma"))
+
+#posterior predictive check
 (meta_posterior_1 <- pp_check(meta_model_posterior_1, nsamples = 100))
 
+#model summary
 meta_model_posterior_1
 
-plot(hypothesis(meta_model_posterior_1, 
-                c("Languageus:DiagnosisTD > Languagedk:DiagnosisTD",
-                  "Languageus:DiagnosisTD < 0",
-                  "Languagedk:DiagnosisTD < 0")))
+#Testing hypotheses
+hypothesis(meta_model_posterior_1, 
+                c("Languageus:DiagnosisTD > Languagedk:DiagnosisTD", #the effect of diagnosis in the us in bigger than in dk
+                  "Languageus:DiagnosisTD < 0", #there is an effect of diagnosis in the us
+                  "Languagedk:DiagnosisTD < 0")) #there is an effect of diagnosis in dk
 
-conditional_effects(meta_model_posterior_1)
+#plotting hypotheses
+gridExtra::grid.arrange(
+  plot(hypothesis(meta_model_posterior_1, "Languageus:DiagnosisTD > Languagedk:DiagnosisTD"))[[1]]+
+       ggtitle("Difference in effects of diagnosis between languages"),
+  plot(hypothesis(meta_model_posterior_1, "Languageus:DiagnosisTD > 0"))[[1]]+
+       ggtitle("Effect of diagnosis in the US"),
+  plot(hypothesis(meta_model_posterior_1, "Languagedk:DiagnosisTD > 0"))[[1]]+
+       ggtitle("Effect of diagnosis in DK"), nrow = 3)
 
+#plotting effects
+cond <- conditional_effects(meta_model_posterior_1)
+ggplot(cond[[2]], aes(x = Language, y = estimate__, color = Diagnosis))+
+  geom_errorbar(aes(ymin = lower__, ymax = upper__), position = "dodge")+
+  labs(y = "Pitch IQR")+
+  ggtitle("Effect of diagnosis depending on language")
+
+#plotting all hypotheses
+gridExtra::grid.arrange(
+  plot(hypothesis(meta_model_posterior_0, "DiagnosisTD < 0"))[[1]]+ 
+      ggtitle("Effect of Diagnosis on Pitch IQR", "6.a"),
+  plot(hypothesis(meta_model_posterior_1, "Languageus:DiagnosisTD > Languagedk:DiagnosisTD"))[[1]]+
+       ggtitle("Difference in effects of diagnosis between languages", "6.b"),
+  plot(hypothesis(meta_model_posterior_1, "Languageus:DiagnosisTD > 0"))[[1]]+
+       ggtitle("Effect of diagnosis in the US", "6.c"),
+  plot(hypothesis(meta_model_posterior_1, "Languagedk:DiagnosisTD < 0"))[[1]]+
+       ggtitle("Effect of diagnosis in DK", "6.d"),
+  nrow = 4)
+
+
+#adding information criteria for models both loo and waic
 meta_model_posterior_0 <- add_criterion(meta_model_posterior_0, criterion = "loo", reloo = T)
 meta_model_posterior_1 <- add_criterion(meta_model_posterior_1, criterion = "loo", reloo = T)
 meta_model_posterior_0 <- add_criterion(meta_model_posterior_0, criterion = "waic")
 meta_model_posterior_1 <- add_criterion(meta_model_posterior_1, criterion = "waic")
 
+#comparing models using loo
 print(loo_compare(meta_model_posterior_0, meta_model_posterior_1, criterion = "loo"),
       simplify = F)
 
@@ -436,15 +629,20 @@ Step 5: Compare the models
 
 ```{r}
 
-print(loo_compare(meta_model_posterior_0, sceptic_model_posterior_1, criterion = "loo"),
+print(loo_compare(sceptic_model_posterior_0, sceptic_model_posterior_1, 
+                  meta_model_posterior_0, meta_model_posterior_1,
+                  criterion = "loo"),
       simplify = F)
 
-print(loo_compare(meta_model_posterior_0, sceptic_model_posterior_1, criterion = "waic"),
+print(loo_compare(sceptic_model_posterior_0, sceptic_model_posterior_1, 
+                  meta_model_posterior_0, meta_model_posterior_1, criterion = "waic"),
       simplify = F)
 
-loo_model_weights(meta_model_posterior_0, sceptic_model_posterior_1)
+loo_model_weights(sceptic_model_posterior_0, sceptic_model_posterior_1, 
+                  meta_model_posterior_0, meta_model_posterior_1)
 
-model_weights(meta_model_posterior_0, sceptic_model_posterior_1, weights = "waic")
+model_weights(sceptic_model_posterior_0, sceptic_model_posterior_1, 
+                  meta_model_posterior_0, meta_model_posterior_1, weights = "waic")
 
 
 plot(hypothesis(meta_model_posterior_0, "DiagnosisTD < 0"))
@@ -458,7 +656,6 @@ plot(hypothesis(sceptic_model_posterior_1,
 
 
 
-Step 6: Prepare a nice write up of the analysis and answer the questions at the top.
 
 Optional step 7: how skeptical should a prior be?
 - Try different levels of skepticism and compare them using LOO.
